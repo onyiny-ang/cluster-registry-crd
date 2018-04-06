@@ -17,52 +17,64 @@ import (
 	"encoding/json"
 	"flag"
 	"io/ioutil"
+	"net"
 	"net/http"
-	"strings"
 
 	"github.com/golang/glog"
+	v1alpha1 "github.com/pmorie/cluster-registry-crd/pkg/apis/clusterregistry/v1alpha1"
 	"k8s.io/api/admission/v1beta1"
-	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// only allow pods to pull images from specific registry.
-func admit(data []byte) *v1beta1.AdmissionReview {
-	ar := v1beta1.AdmissionReview{}
-	if err := json.Unmarshal(data, &ar); err != nil {
-		glog.Error(err)
-		return nil
-	}
-	// The externalAdmissionHookConfiguration registered via selfRegistration
-	// asks the kube-apiserver only sends admission request regarding clusterss.
-	clusterResource := metav1.GroupVersionResource{Group: "clusterregistry.k8s.io", Version: "v1alpha1", Resource: "clusters"}
-	if ar.Request.Resource != clusterResource {
-		glog.Errorf("expect resource to be %s", clusterResource)
-		return nil
-	}
-
-	raw := ar.Request.Object.Raw
-	cluster := v1.Pod{}
-	if err := json.Unmarshal(raw, &cluster); err != nil {
-		glog.Error(err)
-		return nil
-	}
-	reviewStatus := v1beta1.AdmissionReviewStatus{}
-	for _, container := range pod.Spec.Containers {
-		// gcr.io is just an example.
-		if !strings.Contains(container.Image, "gcr.io") {
-			reviewStatus.Allowed = false
-			reviewStatus.Result = &metav1.Status{
-				Reason: "can only pull image from grc.io",
-			}
-			return &reviewStatus
-		}
-	}
-	reviewStatus.Allowed = true
-	return &reviewStatus
+// Config contains the server (the webhook) cert and key.
+type Config struct {
+	CertFile string
+	KeyFile  string
 }
 
-func serve(w http.ResponseWriter, r *http.Request) {
+func (c *Config) addFlags() {
+	flag.StringVar(&c.CertFile, "tls-cert-file", c.CertFile, ""+
+		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated "+
+		"after server cert).")
+	flag.StringVar(&c.KeyFile, "tls-private-key-file", c.KeyFile, ""+
+		"File containing the default x509 private key matching --tls-cert-file.")
+}
+
+func toAdmissionResponse(err error) *v1beta1.AdmissionResponse {
+	return &v1beta1.AdmissionResponse{
+		Result: &metav1.Status{
+			Message: err.Error(),
+		},
+	}
+}
+
+func admitCRD(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+	glog.V(2).Info("admitting crd")
+
+	raw := ar.Request.Object.Raw
+	cluster := v1alpha1.Cluster{}
+	err := json.Unmarshal(raw, &cluster)
+	if err != nil {
+		glog.Error(err)
+		return toAdmissionResponse(err)
+	}
+
+	reviewResponse := v1beta1.AdmissionResponse{}
+	reviewResponse.Allowed = true
+	v := cluster.Spec.KubernetesAPIEndpoints.ServerEndpoints[1].ServerAddress
+	if net.ParseIP(string(v)) != nil {
+		reviewResponse.Allowed = false
+		reviewResponse.Result = &metav1.Status{
+			Reason: "the custom resource contains unwanted data",
+		}
+	}
+	return &reviewResponse
+}
+
+type admitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
+
+func serve(w http.ResponseWriter, r *http.Request, admit admitFunc) {
 	var body []byte
 	if r.Body != nil {
 		if data, err := ioutil.ReadAll(r.Body); err == nil {
@@ -77,12 +89,26 @@ func serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reviewStatus := admit(body)
-	ar := v1beta1.AdmissionReview{
-		Status: *reviewStatus,
+	var reviewResponse *v1beta1.AdmissionResponse
+	ar := v1beta1.AdmissionReview{}
+	deserializer := codecs.UniversalDeserializer()
+	if _, _, err := deserializer.Decode(body, nil, &ar); err != nil {
+		glog.Error(err)
+		reviewResponse = toAdmissionResponse(err)
+	} else {
+		reviewResponse = admit(ar)
 	}
 
-	resp, err := json.Marshal(ar)
+	response := v1beta1.AdmissionReview{}
+	if reviewResponse != nil {
+		response.Response = reviewResponse
+		response.Response.UID = ar.Request.UID
+	}
+	// reset the Object and OldObject, they are not needed in a response.
+	ar.Request.Object = runtime.RawExtension{}
+	ar.Request.OldObject = runtime.RawExtension{}
+
+	resp, err := json.Marshal(response)
 	if err != nil {
 		glog.Error(err)
 	}
@@ -91,14 +117,20 @@ func serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func serveCRD(w http.ResponseWriter, r *http.Request) {
+	serve(w, r, admitCRD)
+}
+
 func main() {
+	var config Config
+	config.addFlags()
 	flag.Parse()
-	http.HandleFunc("/", serve)
+	http.HandleFunc("/crd", serveCRD)
 	clientset := getClient()
 	server := &http.Server{
-		Addr:      ":8000",
-		TLSConfig: configTLS(clientset),
+		Addr:      ":443",
+		TLSConfig: configTLS(config, clientset),
 	}
-	go selfRegistration(clientset, caCert)
 	server.ListenAndServeTLS("", "")
+
 }
