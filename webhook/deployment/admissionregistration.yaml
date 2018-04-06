@@ -1,0 +1,21 @@
+apiVersion: admissionregistration.k8s.io/v1alpha1
+kind: ExternalAdmissionHookConfiguration
+metadata:
+  name: config1
+externalAdmissionHooks:
+  - name: clusterregistry.k8s.io
+    rules:
+      - operations:
+          - CREATE
+        apiGroups:
+          - ""
+        apiVersions:
+          - v1alpha1
+        resources:
+          - clusters
+    failurePolicy: Ignore
+    clientConfig:
+      service:
+        namespace: default
+        name: webhook
+      caBundle:

@@ -128,7 +128,7 @@ func main() {
 	http.HandleFunc("/crd", serveCRD)
 	clientset := getClient()
 	server := &http.Server{
-		Addr:      ":443",
+		Addr:      ":8000",
 		TLSConfig: configTLS(config, clientset),
 	}
 	server.ListenAndServeTLS("", "")
