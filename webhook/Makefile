@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-IMAGE = gcr.io/cluster-registry-crd/cr-crd-admission-webhook-amd64
+IMAGE = gcr.io/jiji-168714/cr-crd-admission-webhook-amd64
 TAG = 1.10v2
 
 build:

@@ -63,7 +63,7 @@ func admitCRD(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	reviewResponse := v1beta1.AdmissionResponse{}
 	reviewResponse.Allowed = true
 	v := cluster.Spec.KubernetesAPIEndpoints.ServerEndpoints[1].ServerAddress
-	if net.ParseIP(string(v)) != nil {
+	if net.ParseIP(string(v)) == nil {
 		reviewResponse.Allowed = false
 		reviewResponse.Result = &metav1.Status{
 			Reason: "the custom resource contains unwanted data",

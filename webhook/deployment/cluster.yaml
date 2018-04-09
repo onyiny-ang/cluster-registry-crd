@@ -1,9 +1,0 @@
-apiVersion: clusterregistry.k8s.io/v1alpha1
-kind: Cluster
-metadata:
-  name: webhook
-spec:
-  kubernetesApiEndpoints: webhook
-     serverEndpoints: webhook
-     - clientCidr: webhook
-       serverAddress: webhook
