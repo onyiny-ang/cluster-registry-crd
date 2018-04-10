@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-IMAGE = gcr.io/jiji-168714/cr-crd-admission-webhook-amd64
+IMAGE = gcr.io/jiji-168714/cr-crd-webhook-amd64
 TAG = 1.10v2
 
 build:
@@ -22,14 +22,13 @@ build:
 	gcloud docker -- push $(IMAGE):$(TAG)
 	rm -rf webhook
 deploy-only:
-	kubectl delete clusterrolebinding validating-webhook || true
+	kubectl delete clusterrolebinding crd-validating-webhook || true
 	kubectl delete -f deployment/service.yaml || true
-	kubectl delete -f deployment/pod.yaml || true
-	kubectl delete validatingwebhookconfiguration.admissionregistration.k8s.io config1|| true
+	kubectl delete validatingwebhookconfiguration.admissionregistration.k8s.io crd-validating-webhook || true
 	kubectl create -f deployment/service.yaml
 	# It's necessary because the webhook needs to access the extension-apiserver-authentication configmap
-	kubectl create clusterrolebinding validating-webhook --clusterrole=cluster-admin --serviceaccount=default:default
+	kubectl create clusterrolebinding crd-validating-webhook --clusterrole=cluster-admin --serviceaccount=default:default
 	sleep 5
-	kubectl create -f deployment/pod.yaml
+	kubectl create -f deployment/admissionregistration.yaml
 deploy: build deploy-only
 

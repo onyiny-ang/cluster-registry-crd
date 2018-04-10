@@ -56,7 +56,7 @@ func admitCRD(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	cluster := v1alpha1.Cluster{}
 	err := json.Unmarshal(raw, &cluster)
 	if err != nil {
-		glog.Error(err)
+		glog.V(2).Info(err)
 		return toAdmissionResponse(err)
 	}
 
@@ -85,7 +85,7 @@ func serve(w http.ResponseWriter, r *http.Request, admit admitFunc) {
 	// verify the content type is accurate
 	contentType := r.Header.Get("Content-Type")
 	if contentType != "application/json" {
-		glog.Errorf("contentType=%s, expect application/json", contentType)
+		glog.V(2).Infof("contentType=%s, expect application/json", contentType)
 		return
 	}
 
@@ -93,7 +93,7 @@ func serve(w http.ResponseWriter, r *http.Request, admit admitFunc) {
 	ar := v1beta1.AdmissionReview{}
 	deserializer := codecs.UniversalDeserializer()
 	if _, _, err := deserializer.Decode(body, nil, &ar); err != nil {
-		glog.Error(err)
+		glog.V(2).Info(err)
 		reviewResponse = toAdmissionResponse(err)
 	} else {
 		reviewResponse = admit(ar)
@@ -110,10 +110,10 @@ func serve(w http.ResponseWriter, r *http.Request, admit admitFunc) {
 
 	resp, err := json.Marshal(response)
 	if err != nil {
-		glog.Error(err)
+		glog.V(2).Info(err)
 	}
 	if _, err := w.Write(resp); err != nil {
-		glog.Error(err)
+		glog.V(2).Info(err)
 	}
 }
 
@@ -123,12 +123,12 @@ func serveCRD(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	var config Config
-	config.addFlags()
-	flag.Parse()
+	//	config.addFlags()
+	//	flag.Parse()
 	http.HandleFunc("/crd", serveCRD)
 	clientset := getClient()
 	server := &http.Server{
-		Addr:      ":8000",
+		Addr:      ":443",
 		TLSConfig: configTLS(config, clientset),
 	}
 	server.ListenAndServeTLS("", "")

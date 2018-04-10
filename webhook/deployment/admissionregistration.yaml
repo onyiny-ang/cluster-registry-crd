@@ -1,9 +1,9 @@
 apiVersion: admissionregistration.k8s.io/v1beta1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: config1
+  name: crd-validating-webhook
 webhooks:
-  - name: podimage.k8s.io
+  - name: some-address.domain.com
     rules:
       - operations:
           - CREATE
@@ -17,6 +17,6 @@ webhooks:
     clientConfig:
       service:
         namespace: default
-        name: webhook
+        name: crd-validating-webhook
       caBundle:
 

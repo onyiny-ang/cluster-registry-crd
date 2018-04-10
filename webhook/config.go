@@ -39,10 +39,6 @@ func getClient() *kubernetes.Clientset {
 }
 
 func configTLS(config Config, clientset *kubernetes.Clientset) *tls.Config {
-	//sCert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
-	//if err != nil {
-	//	glog.Fatal(err)
-	//}
 	return &tls.Config{
 		ClientAuth: tls.NoClientCert,
 	}
