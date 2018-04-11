@@ -19,16 +19,16 @@ TAG = 1.10v2
 build:
 	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o webhook .
 	docker build --no-cache -t $(IMAGE):$(TAG) .
-	gcloud docker -- push $(IMAGE):$(TAG)
+	docker push $(IMAGE):$(TAG)
 	rm -rf webhook
 deploy-only:
 	kubectl delete clusterrolebinding crd-validating-webhook || true
-	kubectl delete -f deployment/service.yaml || true
+	kubectl delete -f deployment/crd-validating-webhook.yaml || true
 	kubectl delete validatingwebhookconfiguration.admissionregistration.k8s.io crd-validating-webhook || true
-	kubectl create -f deployment/service.yaml
+	kubectl create -f deployment/crd-validating-webhook.yaml
 	# It's necessary because the webhook needs to access the extension-apiserver-authentication configmap
 	kubectl create clusterrolebinding crd-validating-webhook --clusterrole=cluster-admin --serviceaccount=default:default
 	sleep 5
-	kubectl create -f deployment/admissionregistration.yaml
+	kubectl create -f deployment/admissionregistration.yaml --validate=false
 deploy: build deploy-only
 

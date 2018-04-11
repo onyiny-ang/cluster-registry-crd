@@ -14,9 +14,11 @@ limitations under the License.
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 
@@ -24,10 +26,13 @@ import (
 	v1alpha1 "github.com/pmorie/cluster-registry-crd/pkg/apis/clusterregistry/v1alpha1"
 	"k8s.io/api/admission/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// Config contains the server (the webhook) cert and key.
+var (
+	certFile string
+	keyFile  string
+)
+
 type Config struct {
 	CertFile string
 	KeyFile  string
@@ -41,40 +46,7 @@ func (c *Config) addFlags() {
 		"File containing the default x509 private key matching --tls-cert-file.")
 }
 
-func toAdmissionResponse(err error) *v1beta1.AdmissionResponse {
-	return &v1beta1.AdmissionResponse{
-		Result: &metav1.Status{
-			Message: err.Error(),
-		},
-	}
-}
-
-func admitCRD(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
-	glog.V(2).Info("admitting crd")
-
-	raw := ar.Request.Object.Raw
-	cluster := v1alpha1.Cluster{}
-	err := json.Unmarshal(raw, &cluster)
-	if err != nil {
-		glog.V(2).Info(err)
-		return toAdmissionResponse(err)
-	}
-
-	reviewResponse := v1beta1.AdmissionResponse{}
-	reviewResponse.Allowed = true
-	v := cluster.Spec.KubernetesAPIEndpoints.ServerEndpoints[1].ServerAddress
-	if net.ParseIP(string(v)) == nil {
-		reviewResponse.Allowed = false
-		reviewResponse.Result = &metav1.Status{
-			Reason: "the custom resource contains unwanted data",
-		}
-	}
-	return &reviewResponse
-}
-
-type admitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
-
-func serve(w http.ResponseWriter, r *http.Request, admit admitFunc) {
+func serveCrd(w http.ResponseWriter, r *http.Request) {
 	var body []byte
 	if r.Body != nil {
 		if data, err := ioutil.ReadAll(r.Body); err == nil {
@@ -82,55 +54,79 @@ func serve(w http.ResponseWriter, r *http.Request, admit admitFunc) {
 		}
 	}
 
-	// verify the content type is accurate
-	contentType := r.Header.Get("Content-Type")
-	if contentType != "application/json" {
-		glog.V(2).Infof("contentType=%s, expect application/json", contentType)
+	log.Println(string(body))
+
+	//	// verify the content type is accurate
+	//	contentType := r.Header.Get("Content-Type")
+	//	if contentType != "application/json" {
+	//		glog.Errorf("contentType=%s, expect application/json", contentType)
+	//		return
+	//	}
+
+	//var reviewResponse *v1beta1.AdmissionResponse
+	ar := v1beta1.AdmissionReview{}
+	//	deserializer := codecs.UniversalDeserializer()
+	//	if _, _, err := deserializer.Decode(body, nil, &ar); err != nil {
+	//		glog.Error(err)
+	//		reviewResponse = toAdmissionResponse(err)
+	//	} else {
+	//		reviewResponse = admit(ar)
+	//	}
+
+	if err := json.Unmarshal(body, &ar); err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	var reviewResponse *v1beta1.AdmissionResponse
-	ar := v1beta1.AdmissionReview{}
-	deserializer := codecs.UniversalDeserializer()
-	if _, _, err := deserializer.Decode(body, nil, &ar); err != nil {
-		glog.V(2).Info(err)
-		reviewResponse = toAdmissionResponse(err)
-	} else {
-		reviewResponse = admit(ar)
+	cluster := v1alpha1.Cluster{}
+	err := json.Unmarshal(ar.Request.Object.Raw, &cluster)
+	if err != nil {
+		log.Println(err)
+		glog.Error(err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
 
-	response := v1beta1.AdmissionReview{}
-	if reviewResponse != nil {
-		response.Response = reviewResponse
-		response.Response.UID = ar.Request.UID
+	reviewResponse := v1beta1.AdmissionResponse{Allowed: true}
+	v := cluster.Spec.KubernetesAPIEndpoints.ServerEndpoints[1].ServerAddress
+	if net.ParseIP(string(v)) == nil {
+		reviewResponse.Allowed = false
+		reviewResponse.Result = &metav1.Status{
+			Reason: "the custom resource contains a malformed IP address",
+		}
 	}
-	// reset the Object and OldObject, they are not needed in a response.
-	ar.Request.Object = runtime.RawExtension{}
-	ar.Request.OldObject = runtime.RawExtension{}
+
+	log.Printf("Correct IP address formulation", v)
+
+	response := v1beta1.AdmissionReview{}
+	if &reviewResponse != nil {
+		response.Response = &reviewResponse
+	}
 
 	resp, err := json.Marshal(response)
 	if err != nil {
-		glog.V(2).Info(err)
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
-	if _, err := w.Write(resp); err != nil {
-		glog.V(2).Info(err)
-	}
-}
-
-func serveCRD(w http.ResponseWriter, r *http.Request) {
-	serve(w, r, admitCRD)
+	w.WriteHeader(http.StatusOK)
+	w.Write(resp)
 }
 
 func main() {
 	var config Config
-	//	config.addFlags()
-	//	flag.Parse()
-	http.HandleFunc("/crd", serveCRD)
-	clientset := getClient()
+	config.addFlags()
+	flag.Parse()
+	//	flag.StringVar(&certFile, "tls-cert-file", c.CertFile, "TLS certificate file.")
+	//	flag.StringVar(&keyFile, "tls-private-key-file", c.KeyFile, "TLS key file.")
+	http.HandleFunc("/", serveCrd)
 	server := &http.Server{
-		Addr:      ":443",
-		TLSConfig: configTLS(config, clientset),
+		Addr: ":443",
+		TLSConfig: &tls.Config{
+			ClientAuth: tls.NoClientCert,
+		},
 	}
-	server.ListenAndServeTLS("", "")
+	log.Fatal(server.ListenAndServeTLS("", ""))
 
 }

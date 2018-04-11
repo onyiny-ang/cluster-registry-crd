@@ -6,8 +6,9 @@ metadata:
   name: crd-validating-webhook
 spec:
   ports:
-    - protocol: TCP
+    - name: https
       port: 443
+      protocol: "TCP"
   selector:
     app: crd-validating-webhook
 ---

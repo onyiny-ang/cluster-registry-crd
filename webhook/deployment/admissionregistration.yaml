@@ -3,7 +3,7 @@ kind: ValidatingWebhookConfiguration
 metadata:
   name: crd-validating-webhook
 webhooks:
-  - name: some-address.domain.com
+  - name: crd-validating-webhook.k8s.io
     rules:
       - operations:
           - CREATE

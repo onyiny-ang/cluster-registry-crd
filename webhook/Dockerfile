@@ -14,5 +14,5 @@
 
 FROM alpine:latest
 
-ADD webhook /webhook
-ENTRYPOINT ["/webhook"]
+ADD webhook /crd-validating-webhook
+ENTRYPOINT ["/crd-validating-webhook"]
