@@ -2,7 +2,7 @@ all: build
 .PHONY: all
 
 build:
-	go build -o _output/bin/generic-admission-server src/github.com/pmorie/cluster-registry-crd/generic-admission-server/pkg/cmd
+	go build -o _output/bin/generic-admission-server src/github.com/onyiny-ang/cluster-registry-crd/generic-admission-server/pkg/cmd
 .PHONY: build
 
 clean:
