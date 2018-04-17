@@ -2,13 +2,14 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"sync"
 
+	"github.com/golang/glog"
 	"github.com/openshift/generic-admission-server/pkg/cmd"
 	admissionv1beta1 "k8s.io/api/admission/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -35,6 +36,7 @@ func (a *admissionHook) MutatingResource() (plural schema.GroupVersionResource, 
 }
 
 func (a *admissionHook) Admit(admissionSpec *admissionv1beta1.AdmissionRequest) *admissionv1beta1.AdmissionResponse {
+	glog.V(2).Info("webhook is starting! *hype*")
 	status := &admissionv1beta1.AdmissionResponse{}
 
 	if admissionSpec.Operation != admissionv1beta1.Create || len(admissionSpec.SubResource) != 0 ||
@@ -64,26 +66,27 @@ func (a *admissionHook) Admit(admissionSpec *admissionv1beta1.AdmissionRequest) 
 
 	a.lock.RLock()
 	defer a.lock.RUnlock()
-	if !a.initialized {
-		status.Allowed = false
-		status.Result = &metav1.Status{
-			Status: metav1.StatusFailure, Code: http.StatusInternalServerError, Reason: metav1.StatusReasonInternalError,
-			Message: "not initialized",
-		}
-		return status
-	}
-
-	_, err = a.reservationClient.Get(admittingObjectName.Name, metav1.GetOptions{})
-	if err == nil {
-		status.Allowed = false
-		status.Result = &metav1.Status{
-			Status: metav1.StatusFailure, Code: http.StatusForbidden, Reason: metav1.StatusReasonForbidden,
-			Message: fmt.Sprintf("%q is reserved", admittingObjectName.Name),
-		}
-		return status
-	}
+	//if !a.initialized {
+	//	status.Allowed = false
+	//	status.Result = &metav1.Status{
+	//		Status: metav1.StatusFailure, Code: http.StatusInternalServerError, Reason: metav1.StatusReasonInternalError,
+	//		Message: "not initialized",
+	//	}
+	//	return status
+	//}
+	//
+	//_, err = a.reservationClient.Get(admittingObjectName.Name, metav1.GetOptions{})
+	//if err == nil {
+	//	status.Allowed = false
+	//	status.Result = &metav1.Status{
+	//		Status: metav1.StatusFailure, Code: http.StatusForbidden, Reason: metav1.StatusReasonForbidden,
+	//		Message: fmt.Sprintf("%q is reserved", admittingObjectName.Name),
+	//	}
+	//	return status
+	//}
 	if apierrors.IsNotFound(err) {
 		status.Allowed = true
+		glog.V(2).Info("yay! you made it")
 		return status
 	}
 
